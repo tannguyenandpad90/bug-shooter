@@ -79,14 +79,14 @@ export default function GameCanvas() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!stateRef.current) return;
-      stateRef.current.keys[e.key] = true;
-      if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      stateRef.current.keys[e.code] = true;
+      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
         e.preventDefault();
       }
     };
     const handleKeyUp = (e) => {
       if (!stateRef.current) return;
-      stateRef.current.keys[e.key] = false;
+      stateRef.current.keys[e.code] = false;
     };
 
     window.addEventListener("keydown", handleKeyDown);

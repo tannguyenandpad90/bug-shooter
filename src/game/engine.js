@@ -1,4 +1,5 @@
 import { sfxShoot, sfxHit, sfxKill, sfxPickup, sfxDamage, sfxBossAppear, sfxBossDie, sfxCombo, sfxDash, sfxLevelUp, startHeartbeat, stopHeartbeat, sfxHorrorDrone, sfxDroneDeploy } from "./audio";
+import { startMusic, stopMusic, setMusicIntensity, setBossMusic } from "./music";
 import { CodeRain, DamageNumbers, Announcements, LevelBanner, BloodSplatter, ScreenCracks, FloatingErrors, DamageGlitch, HorrorMode, FogOfWar, BossEntrance, renderCRT, createRingExplosion, emitTrail, emitSparkle } from "./vfx";
 
 const CANVAS_W = 800;
@@ -155,6 +156,80 @@ function createMiniEnemy(x, y, dx) {
   };
 }
 
+// TANK — big, slow, lots of HP, armored shell
+function createTankEnemy(state) {
+  return {
+    x: Math.random() * (CANVAS_W - ENEMY_SIZE * 1.5),
+    y: -ENEMY_SIZE * 1.5,
+    w: ENEMY_SIZE * 1.5,
+    h: ENEMY_SIZE * 1.5,
+    speed: 0.6 + state.level * 0.05,
+    hp: 5 + Math.floor(state.level / 2) * 2,
+    type: "tank",
+    frame: 0,
+  };
+}
+
+// SHOOTER — stops midscreen and fires projectiles at player
+function createShooterEnemy(state) {
+  const targetY = 60 + Math.random() * 180;
+  return {
+    x: Math.random() * (CANVAS_W - ENEMY_SIZE),
+    y: -ENEMY_SIZE,
+    w: ENEMY_SIZE,
+    h: ENEMY_SIZE,
+    speed: 2 + state.level * 0.15,
+    hp: 2 + Math.floor(state.level / 3),
+    type: "shooter",
+    frame: 0,
+    targetY,
+    parked: false,
+    shootTimer: 0,
+    shootInterval: 80 - Math.min(state.level * 3, 40),
+    projectiles: [],
+    parkTimer: 300 + Math.floor(Math.random() * 120),
+  };
+}
+
+// SWARM — tiny, fast, always spawns in a group of 4-5
+function createSwarmGroup(state) {
+  const baseX = 50 + Math.random() * (CANVAS_W - 100);
+  const count = 4 + Math.floor(Math.random() * 2);
+  const bugs = [];
+  for (let i = 0; i < count; i++) {
+    bugs.push({
+      x: baseX + (i - count / 2) * 22,
+      y: -ENEMY_SIZE * 0.6 - i * 12,
+      w: ENEMY_SIZE * 0.6,
+      h: ENEMY_SIZE * 0.6,
+      speed: 3 + state.level * 0.2 + Math.random() * 0.5,
+      hp: 1,
+      type: "swarm",
+      frame: Math.floor(Math.random() * 60),
+      swarmIndex: i,
+      swarmBaseX: baseX,
+    });
+  }
+  return bugs;
+}
+
+// TELEPORTER — moves down, then teleports to random x every few seconds
+function createTeleporterEnemy(state) {
+  return {
+    x: Math.random() * (CANVAS_W - ENEMY_SIZE),
+    y: -ENEMY_SIZE,
+    w: ENEMY_SIZE,
+    h: ENEMY_SIZE,
+    speed: 1 + state.level * 0.1,
+    hp: 2 + Math.floor(state.level / 4),
+    type: "teleporter",
+    frame: 0,
+    teleportTimer: 90 + Math.floor(Math.random() * 60),
+    teleportCooldown: 0,
+    ghostAlpha: 1,
+  };
+}
+
 // --- Boss ---
 
 function createBoss(state) {
@@ -183,9 +258,21 @@ export function spawnEnemy(state) {
   const roll = Math.random();
   const lvl = state.level;
 
-  if (lvl >= 3 && roll < 0.15) {
+  if (lvl >= 7 && roll < 0.06) {
+    // Swarm — group of tiny fast bugs
+    state.enemies.push(...createSwarmGroup(state));
+  } else if (lvl >= 6 && roll < 0.12) {
+    // Teleporter — blinks around
+    state.enemies.push(createTeleporterEnemy(state));
+  } else if (lvl >= 5 && roll < 0.18) {
+    // Shooter — parks and fires at player
+    state.enemies.push(createShooterEnemy(state));
+  } else if (lvl >= 4 && roll < 0.25) {
+    // Tank — big slow armored
+    state.enemies.push(createTankEnemy(state));
+  } else if (lvl >= 3 && roll < 0.35) {
     state.enemies.push(createSplitterEnemy(state));
-  } else if (lvl >= 2 && roll < 0.35) {
+  } else if (lvl >= 2 && roll < 0.50) {
     state.enemies.push(createZigzagEnemy(state));
   } else {
     state.enemies.push(createNormalEnemy(state));
@@ -339,10 +426,10 @@ function tryDash(state) {
   if (p.dashCooldown > 0 || p.dashing) return;
 
   let dx = 0, dy = 0;
-  if (state.keys["ArrowLeft"] || state.keys["a"]) dx -= 1;
-  if (state.keys["ArrowRight"] || state.keys["d"]) dx += 1;
-  if (state.keys["ArrowUp"] || state.keys["w"]) dy -= 1;
-  if (state.keys["ArrowDown"] || state.keys["s"]) dy += 1;
+  if (state.keys["ArrowLeft"] || state.keys["KeyA"]) dx -= 1;
+  if (state.keys["ArrowRight"] || state.keys["KeyD"]) dx += 1;
+  if (state.keys["ArrowUp"] || state.keys["KeyW"]) dy -= 1;
+  if (state.keys["ArrowDown"] || state.keys["KeyS"]) dy += 1;
   if (dx === 0 && dy === 0) return;
 
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -358,6 +445,14 @@ function tryDash(state) {
 export function update(state) {
   if (state.gameOver) return state;
   state.frame++;
+  // Start music on first frame
+  if (state.frame === 1) startMusic();
+  // Adapt music intensity to game state
+  const hpRatio = state.player.hp / state.player.maxHp;
+  const levelIntensity = Math.min(1, state.level / 12);
+  const dangerIntensity = hpRatio < 0.4 ? (1 - hpRatio) * 0.5 : 0;
+  setMusicIntensity(Math.min(1, levelIntensity + dangerIntensity));
+  setBossMusic(!!state.boss && state.boss.phase === "fight");
 
   const p = state.player;
 
@@ -381,7 +476,7 @@ export function update(state) {
   if (p.dashCooldown > 0) p.dashCooldown--;
   if (p.invincible > 0) p.invincible--;
 
-  if ((state.keys["Shift"] || state.keys["ShiftLeft"]) && !p.dashing) {
+  if ((state.keys["ShiftLeft"] || state.keys["ShiftRight"]) && !p.dashing) {
     tryDash(state);
   }
 
@@ -393,10 +488,10 @@ export function update(state) {
     p.afterimages.push({ x: p.x, y: p.y, life: 8 });
     if (p.dashTimer <= 0) p.dashing = false;
   } else {
-    if (state.keys["ArrowLeft"] || state.keys["a"]) p.x -= p.speed;
-    if (state.keys["ArrowRight"] || state.keys["d"]) p.x += p.speed;
-    if (state.keys["ArrowUp"] || state.keys["w"]) p.y -= p.speed;
-    if (state.keys["ArrowDown"] || state.keys["s"]) p.y += p.speed;
+    if (state.keys["ArrowLeft"] || state.keys["KeyA"]) p.x -= p.speed;
+    if (state.keys["ArrowRight"] || state.keys["KeyD"]) p.x += p.speed;
+    if (state.keys["ArrowUp"] || state.keys["KeyW"]) p.y -= p.speed;
+    if (state.keys["ArrowDown"] || state.keys["KeyS"]) p.y += p.speed;
   }
 
   p.x = Math.max(0, Math.min(CANVAS_W - p.w, p.x));
@@ -410,7 +505,7 @@ export function update(state) {
 
   p.afterimages = p.afterimages.filter((a) => { a.life--; return a.life > 0; });
 
-  if (state.keys[" "] || state.keys["Space"]) shoot(state);
+  if (state.keys["Space"]) shoot(state);
 
   if (p.speedTimer > 0) { p.speedTimer--; if (p.speedTimer === 0) p.speed = BASE_SPEED; }
   if (p.bigBulletTimer > 0) { p.bigBulletTimer--; if (p.bigBulletTimer === 0) p.bigBullet = false; }
@@ -532,7 +627,7 @@ export function update(state) {
           state.dmgNumbers.add(p.x + p.w / 2, p.y, 1, "#ff4444", 18);
           state.damageGlitch.trigger(1);
           state.screenCracks.addCrack();
-          if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); }
+          if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); stopMusic(); }
           return false;
         }
         return true;
@@ -553,6 +648,7 @@ export function update(state) {
   state.enemies = state.enemies.filter((e) => {
     e.frame++;
 
+    // --- Movement by type ---
     if (e.type === "zigzag") {
       e.y += e.speed;
       if (e.startX === 0) e.startX = e.x;
@@ -560,6 +656,70 @@ export function update(state) {
     } else if (e.type === "mini") {
       e.y += e.speed;
       e.x += (e.dx || 0);
+    } else if (e.type === "tank") {
+      e.y += e.speed;
+    } else if (e.type === "shooter") {
+      if (!e.parked) {
+        e.y += e.speed;
+        if (e.y >= e.targetY) {
+          e.y = e.targetY;
+          e.parked = true;
+        }
+      } else {
+        // Parked — shoot at player
+        e.shootTimer++;
+        e.parkTimer--;
+        if (e.shootTimer >= e.shootInterval) {
+          e.shootTimer = 0;
+          const dx = (p.x + p.w / 2) - (e.x + e.w / 2);
+          const dy = (p.y + p.h / 2) - (e.y + e.h / 2);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 0) {
+            e.projectiles.push({
+              x: e.x + e.w / 2 - 3, y: e.y + e.h,
+              w: 6, h: 6, speed: 3.5,
+              vx: (dx / dist) * 3.5, vy: (dy / dist) * 3.5,
+            });
+          }
+        }
+        if (e.parkTimer <= 0) {
+          e.parked = false;
+          e.speed = 3;
+        }
+      }
+      // Shooter projectiles
+      e.projectiles = (e.projectiles || []).filter((proj) => {
+        proj.x += proj.vx;
+        proj.y += proj.vy;
+        if (proj.x < -10 || proj.x > CANVAS_W + 10 || proj.y > CANVAS_H + 10) return false;
+        if (!p.dashing && p.invincible <= 0 && rectsCollide(proj, p)) {
+          p.hp--;
+          state.screenShake = 6;
+          sfxDamage();
+          spawnParticles(state, p.x + p.w / 2, p.y + p.h / 2, "#ff4444", 6);
+          state.dmgNumbers.add(p.x + p.w / 2, p.y, 1, "#ff4444", 16);
+          state.damageGlitch.trigger(0.8);
+          if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); stopMusic(); }
+          return false;
+        }
+        return true;
+      });
+    } else if (e.type === "swarm") {
+      e.y += e.speed;
+      // Wave formation
+      e.x = e.swarmBaseX + Math.sin(e.frame * 0.06 + e.swarmIndex) * 40;
+    } else if (e.type === "teleporter") {
+      e.y += e.speed;
+      e.teleportCooldown--;
+      if (e.teleportCooldown <= 0) {
+        e.teleportCooldown = e.teleportTimer;
+        // Teleport effect
+        spawnParticles(state, e.x + e.w / 2, e.y + e.h / 2, "#ff00ff", 8);
+        e.x = Math.random() * (CANVAS_W - e.w);
+        e.ghostAlpha = 0.2;
+      }
+      // Fade back in after teleport
+      if (e.ghostAlpha < 1) e.ghostAlpha = Math.min(1, e.ghostAlpha + 0.04);
     } else {
       e.y += e.speed;
     }
@@ -573,7 +733,7 @@ export function update(state) {
       state.damageGlitch.trigger(1.2);
       state.screenCracks.addCrack();
       state.bloodSplatter.add(e.x + e.w / 2, e.y + e.h / 2, 0.8);
-      if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); }
+      if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); stopMusic(); }
       return false;
     }
 
@@ -1124,6 +1284,15 @@ function renderEnemy(ctx, e, frame) {
   if (e.type === "zigzag") { color = "#ff8800"; label = "ZIGBUG"; }
   if (e.type === "splitter") { color = "#ff00aa"; label = "SPLIT"; }
   if (e.type === "mini") { color = "#ff6600"; label = "mini"; }
+  if (e.type === "tank") { color = "#884400"; label = "TANK"; }
+  if (e.type === "shooter") { color = "#aa00ff"; label = "SNIPER"; }
+  if (e.type === "swarm") { color = "#ffcc00"; label = ""; }
+  if (e.type === "teleporter") { color = "#ff00ff"; label = "GLITCH"; }
+
+  // Teleporter ghost effect
+  if (e.type === "teleporter" && e.ghostAlpha < 1) {
+    ctx.globalAlpha = e.ghostAlpha;
+  }
 
   // Enemy glow
   const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.8);
@@ -1170,13 +1339,68 @@ function renderEnemy(ctx, e, frame) {
 
   ctx.shadowBlur = 0;
 
-  // Splitter ring
+  // Type-specific decorations
   if (e.type === "splitter") {
     ctx.strokeStyle = `${color}44`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.ellipse(cx, cy, r * 1.0 + Math.sin(frame * 0.05) * 2, r * 1.1 + Math.sin(frame * 0.05) * 2, 0, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  if (e.type === "tank") {
+    // Armor shell — thick border
+    ctx.strokeStyle = "#664400";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.8, r * 1.0, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Shield icon
+    ctx.fillStyle = "#664400";
+    ctx.font = "bold 12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("⛊", cx, cy + 4);
+    ctx.textAlign = "left";
+  }
+
+  if (e.type === "shooter") {
+    // Crosshair
+    ctx.strokeStyle = `${color}88`;
+    ctx.lineWidth = 1;
+    const aimLen = r * 1.5;
+    if (e.parked) {
+      ctx.beginPath(); ctx.moveTo(cx, cy - aimLen); ctx.lineTo(cx, cy + aimLen); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - aimLen, cy); ctx.lineTo(cx + aimLen, cy); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, aimLen * 0.6, 0, Math.PI * 2); ctx.stroke();
+    }
+    // Render shooter projectiles
+    (e.projectiles || []).forEach((proj) => {
+      ctx.fillStyle = "#aa00ff";
+      ctx.shadowColor = "#aa00ff";
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(proj.x + proj.w / 2, proj.y + proj.h / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+  }
+
+  if (e.type === "swarm") {
+    // Swarm: tiny, no extra decoration, just a smaller brighter bug
+  }
+
+  if (e.type === "teleporter") {
+    // Glitch scanlines
+    ctx.strokeStyle = `${color}66`;
+    ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i++) {
+      const offset = Math.sin(frame * 0.2 + i) * 4;
+      ctx.beginPath();
+      ctx.moveTo(cx - r + offset, cy + i * 4);
+      ctx.lineTo(cx + r + offset, cy + i * 4);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1; // Reset after ghost alpha
   }
 
   // HP indicator
