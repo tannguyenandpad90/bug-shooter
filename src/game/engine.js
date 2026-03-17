@@ -69,6 +69,7 @@ export function createInitialState() {
     level: 1,
     prevLevel: 1,
     enemiesKilled: 0,
+    autoShoot: true, // always shoot by default
     lastShot: 0,
     gameOver: false,
     spawnTimer: 0,
@@ -505,7 +506,8 @@ export function update(state) {
 
   p.afterimages = p.afterimages.filter((a) => { a.life--; return a.life > 0; });
 
-  if (state.keys["Space"]) shoot(state);
+  // Auto-shoot (always on) — Space toggles off/on
+  if (state.autoShoot) shoot(state);
 
   if (p.speedTimer > 0) { p.speedTimer--; if (p.speedTimer === 0) p.speed = BASE_SPEED; }
   if (p.bigBulletTimer > 0) { p.bigBulletTimer--; if (p.bigBulletTimer === 0) p.bigBullet = false; }
@@ -597,20 +599,27 @@ export function update(state) {
               const pu = spawnPowerup(boss.x + i * 30, boss.y + boss.h);
               if (pu) state.powerups.push(pu);
             }
+            // Boss kill → instantly advance to next level
+            state.enemiesKilled = state.level * 8;
           }
           return false;
         }
         return true;
       });
     } else if (boss.phase === "dying") {
-      boss.y += 0.5;
-      // Dying explosions
-      if (state.frame % 5 === 0) {
+      boss.y += 3; // fall fast
+      boss.dyingTimer = (boss.dyingTimer || 0) + 1;
+      // Rapid explosions
+      if (boss.dyingTimer % 3 === 0) {
         const rx = boss.x + Math.random() * boss.w;
         const ry = boss.y + Math.random() * boss.h;
-        spawnExplosion(state, rx, ry, "#ff4400", 6);
+        spawnExplosion(state, rx, ry, "#ff4400", 8);
       }
-      if (boss.y > CANVAS_H) state.boss = null;
+      // Remove boss quickly (after ~1.5s or off-screen)
+      if (boss.dyingTimer > 90 || boss.y > CANVAS_H) {
+        state.boss = null;
+        // Clear boss projectiles
+      }
     }
 
     if (boss) {

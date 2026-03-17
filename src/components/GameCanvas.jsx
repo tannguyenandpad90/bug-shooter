@@ -80,6 +80,10 @@ export default function GameCanvas() {
     const handleKeyDown = (e) => {
       if (!stateRef.current) return;
       stateRef.current.keys[e.code] = true;
+      // Space toggles auto-shoot
+      if (e.code === "Space") {
+        stateRef.current.autoShoot = !stateRef.current.autoShoot;
+      }
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
         e.preventDefault();
       }
@@ -223,7 +227,7 @@ export default function GameCanvas() {
       ctx.font = "12px monospace";
       const controlPairs = [
         ["WASD / Arrows", "Di chuyển"],
-        ["SPACE", "Bắn đạn {}"],
+        ["SPACE", "Bật/tắt auto-shoot"],
         ["SHIFT + Dir", "Dash (invincible)"],
       ];
       controlPairs.forEach(([key, desc], i) => {
