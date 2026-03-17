@@ -77,3 +77,27 @@ export function sfxLevelUp() {
   const notes = [523, 659, 784, 1047];
   notes.forEach((f, i) => setTimeout(() => playTone(f, 0.12, "sine", 0.12), i * 80));
 }
+
+// Heartbeat sound for low HP
+let heartbeatInterval = null;
+export function startHeartbeat() {
+  if (heartbeatInterval) return;
+  heartbeatInterval = setInterval(() => {
+    playTone(50, 0.15, "sine", 0.15);
+    setTimeout(() => playTone(45, 0.12, "sine", 0.12), 120);
+  }, 800);
+}
+
+export function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+// Creepy ambient drone for boss warning
+export function sfxHorrorDrone() {
+  playTone(55, 0.6, "sawtooth", 0.06);
+  playTone(58, 0.5, "sine", 0.04);
+  playTone(110, 0.4, "sawtooth", 0.03);
+}

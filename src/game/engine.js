@@ -1,5 +1,5 @@
-import { sfxShoot, sfxHit, sfxKill, sfxPickup, sfxDamage, sfxBossAppear, sfxBossDie, sfxCombo, sfxDash, sfxLevelUp } from "./audio";
-import { CodeRain, DamageNumbers, Announcements, LevelBanner, renderCRT, createRingExplosion, emitTrail, emitSparkle } from "./vfx";
+import { sfxShoot, sfxHit, sfxKill, sfxPickup, sfxDamage, sfxBossAppear, sfxBossDie, sfxCombo, sfxDash, sfxLevelUp, startHeartbeat, stopHeartbeat, sfxHorrorDrone } from "./audio";
+import { CodeRain, DamageNumbers, Announcements, LevelBanner, BloodSplatter, ScreenCracks, FloatingErrors, DamageGlitch, HorrorMode, FogOfWar, BossEntrance, renderCRT, createRingExplosion, emitTrail, emitSparkle } from "./vfx";
 
 const CANVAS_W = 800;
 const CANVAS_H = 600;
@@ -79,6 +79,13 @@ export function createInitialState() {
     dmgNumbers: new DamageNumbers(),
     announcements: new Announcements(),
     levelBanner: new LevelBanner(),
+    bloodSplatter: new BloodSplatter(),
+    screenCracks: new ScreenCracks(CANVAS_W, CANVAS_H),
+    floatingErrors: new FloatingErrors(CANVAS_W, CANVAS_H),
+    damageGlitch: new DamageGlitch(),
+    horrorMode: new HorrorMode(),
+    fogOfWar: new FogOfWar(),
+    bossEntrance: new BossEntrance(),
   };
 }
 
@@ -301,9 +308,19 @@ export function update(state) {
 
   // Update VFX systems
   state.codeRain.update();
+  state.codeRain.setHorrorLevel(state.level);
   state.dmgNumbers.update();
   state.announcements.update();
   state.levelBanner.update();
+  state.bloodSplatter.update();
+  state.screenCracks.update();
+  state.floatingErrors.update();
+  state.floatingErrors.maybeSpawn(state.level);
+  state.damageGlitch.update();
+  state.horrorMode.update(p.hp / p.maxHp);
+  // Heartbeat audio
+  if (p.hp / p.maxHp < 0.45) { startHeartbeat(); } else { stopHeartbeat(); }
+  state.bossEntrance.update();
 
   // Dash cooldown
   if (p.dashCooldown > 0) p.dashCooldown--;
@@ -365,9 +382,12 @@ export function update(state) {
   // Boss warning
   if (state.bossWarning > 0) {
     state.bossWarning--;
+    if (state.bossWarning % 30 === 0) sfxHorrorDrone();
     if (state.bossWarning === 0 && !state.boss) {
       state.boss = createBoss(state);
       sfxBossAppear();
+      state.bossEntrance.trigger();
+      state.damageGlitch.trigger(1.5);
     }
     return state;
   }
@@ -416,6 +436,8 @@ export function update(state) {
             createRingExplosion(state.particles, boss.x + boss.w / 2, boss.y + boss.h / 2, "#ffaa00", 50);
             state.dmgNumbers.add(boss.x + boss.w / 2, boss.y, "DESTROYED!", "#ff0040", 22);
             sfxBossDie();
+            state.bloodSplatter.add(boss.x + boss.w / 2, boss.y + boss.h / 2, 3);
+            state.damageGlitch.trigger(2);
             for (let i = 0; i < 3; i++) {
               const pu = spawnPowerup(boss.x + i * 30, boss.y + boss.h);
               if (pu) state.powerups.push(pu);
@@ -448,7 +470,9 @@ export function update(state) {
           sfxDamage();
           spawnParticles(state, p.x + p.w / 2, p.y + p.h / 2, "#ff4444", 8);
           state.dmgNumbers.add(p.x + p.w / 2, p.y, 1, "#ff4444", 18);
-          if (p.hp <= 0) state.gameOver = true;
+          state.damageGlitch.trigger(1);
+          state.screenCracks.addCrack();
+          if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); }
           return false;
         }
         return true;
@@ -486,7 +510,10 @@ export function update(state) {
       sfxDamage();
       spawnParticles(state, e.x + e.w / 2, e.y + e.h / 2, "#ff4444", 8);
       state.dmgNumbers.add(p.x + p.w / 2, p.y, 1, "#ff4444", 18);
-      if (p.hp <= 0) state.gameOver = true;
+      state.damageGlitch.trigger(1.2);
+      state.screenCracks.addCrack();
+      state.bloodSplatter.add(e.x + e.w / 2, e.y + e.h / 2, 0.8);
+      if (p.hp <= 0) { state.gameOver = true; stopHeartbeat(); }
       return false;
     }
 
@@ -512,6 +539,7 @@ export function update(state) {
           createRingExplosion(state.particles, e.x + e.w / 2, e.y + e.h / 2, "#ff0040");
           state.dmgNumbers.add(e.x + e.w / 2, e.y, `+${pts}`, mult >= 3 ? "#f59e0b" : "#00ff88", 12 + mult * 2);
           sfxKill();
+          state.bloodSplatter.add(e.x + e.w / 2, e.y + e.h / 2, e.type === "splitter" ? 1.5 : 1);
 
           if (e.type === "splitter") {
             newEnemies.push(createMiniEnemy(e.x - 10, e.y, -1.2));
@@ -606,6 +634,9 @@ export function render(ctx, state) {
   // Code rain background
   state.codeRain.render(ctx);
 
+  // Floating error messages (background horror)
+  state.floatingErrors.render(ctx);
+
   // Grid lines
   ctx.strokeStyle = "rgba(0, 255, 100, 0.04)";
   ctx.lineWidth = 1;
@@ -615,6 +646,9 @@ export function render(ctx, state) {
   for (let y = 0; y < H; y += 50) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
+
+  // Blood splatters (on ground, behind entities)
+  state.bloodSplatter.render(ctx);
 
   // Particles (behind entities)
   state.particles.forEach((pt) => {
@@ -857,10 +891,28 @@ export function render(ctx, state) {
   ctx.font = "10px monospace";
   ctx.fillText(`◆ ${tierNames[state.weaponTier]} SHOT`, 10, H - 10);
 
+  // Fog of War (before restore to respect shake)
+  state.fogOfWar.render(ctx, W, H, state.player.x, state.player.y, state.player.w, state.player.h, state.level);
+
   ctx.restore();
 
-  // CRT overlay (after restore, so it's not affected by shake)
-  renderCRT(ctx, W, H);
+  // Horror overlays (after restore — screen-space effects)
+  const horrorLevel = Math.min(1, state.level / 15);
+
+  // Screen cracks
+  state.screenCracks.render(ctx);
+
+  // Damage glitch (RGB split, scan displacement)
+  state.damageGlitch.render(ctx, W, H);
+
+  // Boss entrance horror
+  state.bossEntrance.render(ctx, W, H);
+
+  // Low HP horror mode (heartbeat, static, warp)
+  state.horrorMode.render(ctx, W, H, state.player.hp / state.player.maxHp);
+
+  // CRT overlay (final pass)
+  renderCRT(ctx, W, H, horrorLevel);
 }
 
 function renderEnemy(ctx, e, frame) {
