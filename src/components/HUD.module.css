@@ -1,0 +1,233 @@
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: linear-gradient(180deg, rgba(0, 255, 100, 0.06) 0%, rgba(0, 0, 0, 0.4) 100%);
+  border-bottom: 1px solid rgba(0, 255, 100, 0.12);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  min-height: 52px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+
+.hud::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+}
+
+.hudDanger {
+  border-bottom-color: rgba(255, 0, 64, 0.3) !important;
+  animation: hudPulseRed 1s infinite alternate;
+}
+
+@keyframes hudPulseRed {
+  from { background: linear-gradient(180deg, rgba(255, 0, 64, 0.06) 0%, rgba(0, 0, 0, 0.4) 100%); }
+  to { background: linear-gradient(180deg, rgba(255, 0, 64, 0.12) 0%, rgba(0, 0, 0, 0.4) 100%); }
+}
+
+/* LEFT SECTION */
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+
+.hpSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hpLabel {
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  transition: color 0.3s;
+}
+
+.hpBarOuter {
+  width: 130px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+  overflow: hidden;
+  position: relative;
+}
+
+.hpBarInner {
+  height: 100%;
+  transition: width 0.3s ease, background-color 0.3s ease;
+  position: relative;
+}
+
+.hpBarInner::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.hpBarDanger {
+  animation: hpFlash 0.5s infinite alternate;
+}
+
+@keyframes hpFlash {
+  to { opacity: 0.6; }
+}
+
+.hpBarShine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.hpText {
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 30px;
+  transition: color 0.3s;
+}
+
+.tierBadge {
+  margin-left: 30px;
+}
+
+.tierText {
+  font-size: 9px;
+  color: #00ff8888;
+  letter-spacing: 1.5px;
+}
+
+/* CENTER SECTION */
+.center {
+  text-align: center;
+  position: relative;
+}
+
+.scoreWrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+}
+
+.scorePrefix {
+  color: #00ff8866;
+  font-size: 12px;
+}
+
+.score {
+  color: #00ff88;
+  font-size: 22px;
+  font-weight: bold;
+  text-shadow: 0 0 12px rgba(0, 255, 100, 0.3);
+  letter-spacing: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.level {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.levelLabel {
+  color: #6b7280;
+  font-size: 9px;
+  letter-spacing: 3px;
+}
+
+.levelNum {
+  color: #8892a0;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+/* RIGHT SECTION */
+.right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.buffs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.buff {
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 0.5px;
+}
+
+.buffCombo {
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  animation: pulse 0.6s infinite alternate;
+}
+
+.buffHot {
+  color: #ff0040;
+  background: rgba(255, 0, 64, 0.1);
+  border: 1px solid rgba(255, 0, 64, 0.3);
+  animation: pulse 0.25s infinite alternate;
+  text-shadow: 0 0 8px rgba(255, 0, 64, 0.5);
+}
+
+.buffCoffee {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  animation: pulse 0.8s infinite alternate;
+}
+
+.buffRefactor {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  animation: pulse 0.8s infinite alternate;
+}
+
+.dashReady {
+  font-size: 9px;
+  color: rgba(0, 255, 136, 0.6);
+  letter-spacing: 1px;
+}
+
+.dashCooldown {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.15);
+  letter-spacing: 1px;
+}
+
+@keyframes pulse {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
