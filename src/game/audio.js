@@ -95,6 +95,13 @@ export function stopHeartbeat() {
   }
 }
 
+export function sfxDroneDeploy() {
+  playTone(400, 0.08, "sine", 0.1);
+  setTimeout(() => playTone(600, 0.08, "sine", 0.1), 60);
+  setTimeout(() => playTone(800, 0.06, "sine", 0.1), 120);
+  setTimeout(() => playTone(1000, 0.1, "sine", 0.08), 180);
+}
+
 // Creepy ambient drone for boss warning
 export function sfxHorrorDrone() {
   playTone(55, 0.6, "sawtooth", 0.06);

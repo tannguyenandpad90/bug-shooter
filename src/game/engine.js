@@ -1,4 +1,4 @@
-import { sfxShoot, sfxHit, sfxKill, sfxPickup, sfxDamage, sfxBossAppear, sfxBossDie, sfxCombo, sfxDash, sfxLevelUp, startHeartbeat, stopHeartbeat, sfxHorrorDrone } from "./audio";
+import { sfxShoot, sfxHit, sfxKill, sfxPickup, sfxDamage, sfxBossAppear, sfxBossDie, sfxCombo, sfxDash, sfxLevelUp, startHeartbeat, stopHeartbeat, sfxHorrorDrone, sfxDroneDeploy } from "./audio";
 import { CodeRain, DamageNumbers, Announcements, LevelBanner, BloodSplatter, ScreenCracks, FloatingErrors, DamageGlitch, HorrorMode, FogOfWar, BossEntrance, renderCRT, createRingExplosion, emitTrail, emitSparkle } from "./vfx";
 
 const CANVAS_W = 800;
@@ -20,6 +20,12 @@ const DASH_DURATION = 8;
 const DASH_COOLDOWN = 60;
 
 const COMBO_WINDOW = 120;
+
+const DRONE_MAX = 3;
+const DRONE_LIFETIME = 1500; // ~25 seconds at 60fps
+const DRONE_ORBIT_RADIUS = 55;
+const DRONE_SHOOT_COOLDOWN = 30; // frames
+const DRONE_BULLET_SPEED = 7;
 
 const BOSS_NAMES = [
   "MEMORY LEAK",
@@ -74,6 +80,7 @@ export function createInitialState() {
     screenShake: 0,
     weaponTier: 0,
     frame: 0,
+    drones: [], // Docker container drones
     // VFX systems
     codeRain: new CodeRain(CANVAS_W, CANVAS_H),
     dmgNumbers: new DamageNumbers(),
@@ -187,8 +194,56 @@ export function spawnEnemy(state) {
 
 export function spawnPowerup(x, y) {
   if (Math.random() > 0.25) return null;
-  const type = Math.random() < 0.5 ? "refactor" : "coffee";
-  return { x, y, w: POWERUP_SIZE, h: POWERUP_SIZE, type, life: 300 };
+  const roll = Math.random();
+  let type;
+  if (roll < 0.15) {
+    type = "docker"; // 15% chance
+  } else if (roll < 0.575) {
+    type = "refactor";
+  } else {
+    type = "coffee";
+  }
+  return { x, y, w: POWERUP_SIZE, h: POWERUP_SIZE, type, life: 360 };
+}
+
+function createDrone(state) {
+  // Each drone orbits at a different angle offset
+  const count = state.drones.length;
+  const angleOffset = (Math.PI * 2 / DRONE_MAX) * count;
+  return {
+    angle: angleOffset,
+    orbitSpeed: 0.03,
+    life: DRONE_LIFETIME,
+    maxLife: DRONE_LIFETIME,
+    shootCooldown: 0,
+    x: 0, // computed each frame
+    y: 0,
+  };
+}
+
+function findNearestEnemy(state, x, y) {
+  let nearest = null;
+  let minDist = Infinity;
+  for (const e of state.enemies) {
+    const dx = (e.x + e.w / 2) - x;
+    const dy = (e.y + e.h / 2) - y;
+    const dist = dx * dx + dy * dy;
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = e;
+    }
+  }
+  // Also target boss
+  if (state.boss && state.boss.phase === "fight") {
+    const b = state.boss;
+    const dx = (b.x + b.w / 2) - x;
+    const dy = (b.y + b.h / 2) - y;
+    const dist = dx * dx + dy * dy;
+    if (dist < minDist) {
+      nearest = b;
+    }
+  }
+  return nearest;
 }
 
 function spawnParticles(state, x, y, color, count = 6) {
@@ -374,9 +429,14 @@ export function update(state) {
 
   // Bullets
   state.bullets = state.bullets.filter((b) => {
-    b.y -= BULLET_SPEED;
-    b.x += (b.vx || 0);
-    return b.y + b.h > 0 && b.x > -20 && b.x < CANVAS_W + 20;
+    if (b.isDrone) {
+      b.x += (b.vx || 0);
+      b.y += (b.vy || 0);
+    } else {
+      b.y -= BULLET_SPEED;
+      b.x += (b.vx || 0);
+    }
+    return b.y + b.h > -20 && b.y < CANVAS_H + 20 && b.x > -20 && b.x < CANVAS_W + 20;
   });
 
   // Boss warning
@@ -574,14 +634,78 @@ export function update(state) {
       if (pu.type === "refactor") {
         p.bigBullet = true;
         p.bigBulletTimer = 600;
+        emitSparkle(state.particles, pu.x + pu.w / 2, pu.y + pu.h / 2, "#a855f7");
+        state.dmgNumbers.add(pu.x, pu.y, "REFACTOR!", "#a855f7", 16);
+      } else if (pu.type === "docker") {
+        if (state.drones.length < DRONE_MAX) {
+          state.drones.push(createDrone(state));
+          sfxDroneDeploy();
+          emitSparkle(state.particles, pu.x + pu.w / 2, pu.y + pu.h / 2, "#2496ed", 16);
+          state.dmgNumbers.add(pu.x, pu.y, "DOCKER DEPLOYED!", "#2496ed", 16);
+        } else {
+          // Refresh all drone lifetimes
+          state.drones.forEach((d) => { d.life = d.maxLife; });
+          emitSparkle(state.particles, pu.x + pu.w / 2, pu.y + pu.h / 2, "#2496ed", 10);
+          state.dmgNumbers.add(pu.x, pu.y, "DRONES REFRESHED!", "#2496ed", 14);
+        }
       } else {
         p.speed = BASE_SPEED * 1.8;
         p.speedTimer = 480;
+        emitSparkle(state.particles, pu.x + pu.w / 2, pu.y + pu.h / 2, "#f59e0b");
+        state.dmgNumbers.add(pu.x, pu.y, "COFFEE!", "#f59e0b", 16);
       }
-      emitSparkle(state.particles, pu.x + pu.w / 2, pu.y + pu.h / 2, pu.type === "refactor" ? "#a855f7" : "#f59e0b");
-      state.dmgNumbers.add(pu.x, pu.y, pu.type === "refactor" ? "REFACTOR!" : "COFFEE!", pu.type === "refactor" ? "#a855f7" : "#f59e0b", 16);
       return false;
     }
+    return true;
+  });
+
+  // Drones
+  const pcx = p.x + p.w / 2;
+  const pcy = p.y + p.h / 2;
+  state.drones = state.drones.filter((drone) => {
+    drone.life--;
+    if (drone.life <= 0) {
+      spawnParticles(state, drone.x, drone.y, "#2496ed", 8);
+      return false;
+    }
+
+    // Orbit
+    drone.angle += drone.orbitSpeed;
+    drone.x = pcx + Math.cos(drone.angle) * DRONE_ORBIT_RADIUS;
+    drone.y = pcy + Math.sin(drone.angle) * DRONE_ORBIT_RADIUS;
+
+    // Trail
+    if (state.frame % 3 === 0) {
+      emitTrail(state.particles, drone.x, drone.y, "#2496ed44");
+    }
+
+    // Auto-shoot at nearest enemy
+    drone.shootCooldown--;
+    if (drone.shootCooldown <= 0) {
+      const target = findNearestEnemy(state, drone.x, drone.y);
+      if (target) {
+        const tx = target.x + target.w / 2;
+        const ty = target.y + target.h / 2;
+        const dx = tx - drone.x;
+        const dy = ty - drone.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0) {
+          state.bullets.push({
+            x: drone.x - 6,
+            y: drone.y - 6,
+            w: 12,
+            h: 12,
+            big: false,
+            damage: 1,
+            vx: (dx / dist) * DRONE_BULLET_SPEED * 0.5,
+            vy: (dy / dist) * DRONE_BULLET_SPEED,
+            isDrone: true,
+          });
+        }
+        drone.shootCooldown = DRONE_SHOOT_COOLDOWN;
+      }
+    }
+
     return true;
   });
 
@@ -671,6 +795,8 @@ export function render(ctx, state) {
 
   // Player afterimages
   const p = state.player;
+  const pcx = p.x + p.w / 2;
+  const pcy = p.y + p.h / 2;
   p.afterimages.forEach((ai) => {
     ctx.globalAlpha = ai.life / 12;
     ctx.strokeStyle = "#00ff88";
@@ -737,8 +863,66 @@ export function render(ctx, state) {
     ctx.fillText("⇧ DASH", p.x, p.y + p.h + 12);
   }
 
+  // Drones (Docker containers)
+  state.drones.forEach((drone, i) => {
+    const dx = drone.x;
+    const dy = drone.y;
+    const dying = drone.life < 180; // blink when about to expire
+    if (dying && Math.floor(state.frame / 4) % 2 === 0) return;
+
+    // Drone glow
+    const dGrad = ctx.createRadialGradient(dx, dy, 0, dx, dy, 20);
+    dGrad.addColorStop(0, "rgba(36, 150, 237, 0.12)");
+    dGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = dGrad;
+    ctx.fillRect(dx - 20, dy - 20, 40, 40);
+
+    // Drone body (mini terminal)
+    ctx.strokeStyle = "#2496ed";
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = "#2496ed";
+    ctx.shadowBlur = 8;
+    ctx.strokeRect(dx - 10, dy - 8, 20, 16);
+    ctx.fillStyle = "rgba(36, 150, 237, 0.1)";
+    ctx.fillRect(dx - 10, dy - 8, 20, 16);
+
+    // Docker whale icon
+    ctx.fillStyle = "#2496ed";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("🐳", dx, dy + 4);
+    ctx.textAlign = "left";
+
+    ctx.shadowBlur = 0;
+
+    // Lifetime bar
+    const lifePct = drone.life / drone.maxLife;
+    ctx.fillStyle = "rgba(36, 150, 237, 0.2)";
+    ctx.fillRect(dx - 10, dy + 10, 20, 2);
+    ctx.fillStyle = dying ? "#ff6600" : "#2496ed";
+    ctx.fillRect(dx - 10, dy + 10, 20 * lifePct, 2);
+
+    // Orbit line (subtle)
+    ctx.strokeStyle = "rgba(36, 150, 237, 0.06)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, DRONE_ORBIT_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
   // Bullets
   state.bullets.forEach((b) => {
+    if (b.isDrone) {
+      // Drone bullets — small blue "</>"
+      ctx.fillStyle = "#2496ed";
+      ctx.font = "bold 9px monospace";
+      ctx.shadowColor = "#2496ed";
+      ctx.shadowBlur = 6;
+      ctx.fillText("</>", b.x, b.y + b.h / 2);
+      ctx.shadowBlur = 0;
+      return;
+    }
+
     ctx.fillStyle = b.big ? "#a855f7" : "#00ff88";
     ctx.font = b.big ? "bold 14px monospace" : "bold 10px monospace";
     ctx.shadowColor = b.big ? "#a855f7" : "#00ff88";
@@ -793,34 +977,49 @@ export function render(ctx, state) {
     // Floating animation
     const floatY = Math.sin(pu.life * 0.1) * 3;
 
+    const pux = pu.x + pu.w / 2;
+    const puy = pu.y + pu.h / 2 + floatY;
+    const puGrad = ctx.createRadialGradient(pux, puy, 0, pux, puy, 20);
+
     if (pu.type === "refactor") {
-      // Glow circle
-      const grad = ctx.createRadialGradient(pu.x + pu.w / 2, pu.y + pu.h / 2 + floatY, 0, pu.x + pu.w / 2, pu.y + pu.h / 2 + floatY, 20);
-      grad.addColorStop(0, "rgba(168, 85, 247, 0.15)");
-      grad.addColorStop(1, "transparent");
-      ctx.fillStyle = grad;
+      puGrad.addColorStop(0, "rgba(168, 85, 247, 0.15)");
+      puGrad.addColorStop(1, "transparent");
+      ctx.fillStyle = puGrad;
       ctx.fillRect(pu.x - 10, pu.y - 10 + floatY, pu.w + 20, pu.h + 20);
 
       ctx.fillStyle = "#a855f7";
       ctx.shadowColor = "#a855f7";
       ctx.shadowBlur = 12;
       ctx.font = "bold 13px monospace";
-      ctx.fillText("{ }", pu.x, pu.y + pu.h / 2 + floatY);
+      ctx.fillText("{ }", pu.x, puy);
       ctx.font = "8px monospace";
       ctx.fillStyle = "#a855f7aa";
       ctx.fillText("Refactor", pu.x - 6, pu.y + pu.h + 10 + floatY);
+    } else if (pu.type === "docker") {
+      puGrad.addColorStop(0, "rgba(36, 150, 237, 0.2)");
+      puGrad.addColorStop(1, "transparent");
+      ctx.fillStyle = puGrad;
+      ctx.fillRect(pu.x - 10, pu.y - 10 + floatY, pu.w + 20, pu.h + 20);
+
+      ctx.fillStyle = "#2496ed";
+      ctx.shadowColor = "#2496ed";
+      ctx.shadowBlur = 14;
+      ctx.font = "22px monospace";
+      ctx.fillText("🐳", pu.x - 2, puy + 6);
+      ctx.font = "8px monospace";
+      ctx.fillStyle = "#2496edaa";
+      ctx.fillText("Docker", pu.x - 2, pu.y + pu.h + 10 + floatY);
     } else {
-      const grad = ctx.createRadialGradient(pu.x + pu.w / 2, pu.y + pu.h / 2 + floatY, 0, pu.x + pu.w / 2, pu.y + pu.h / 2 + floatY, 20);
-      grad.addColorStop(0, "rgba(245, 158, 11, 0.15)");
-      grad.addColorStop(1, "transparent");
-      ctx.fillStyle = grad;
+      puGrad.addColorStop(0, "rgba(245, 158, 11, 0.15)");
+      puGrad.addColorStop(1, "transparent");
+      ctx.fillStyle = puGrad;
       ctx.fillRect(pu.x - 10, pu.y - 10 + floatY, pu.w + 20, pu.h + 20);
 
       ctx.fillStyle = "#f59e0b";
       ctx.shadowColor = "#f59e0b";
       ctx.shadowBlur = 12;
       ctx.font = "20px monospace";
-      ctx.fillText("☕", pu.x, pu.y + pu.h / 2 + 4 + floatY);
+      ctx.fillText("☕", pu.x, puy + 4);
       ctx.font = "8px monospace";
       ctx.fillStyle = "#f59e0baa";
       ctx.fillText("Coffee", pu.x - 2, pu.y + pu.h + 10 + floatY);

@@ -51,6 +51,7 @@ export default function GameCanvas() {
       combo: state.combo,
       weaponTier: state.weaponTier,
       dashReady: state.player.dashCooldown <= 0,
+      droneCount: state.drones.length,
     });
 
     if (state.gameOver) {
@@ -237,8 +238,8 @@ export default function GameCanvas() {
 
       ctx.fillStyle = "#4b5563";
       ctx.font = "10px monospace";
-      ctx.fillText("☕ Coffee = Speed+   { } Refactor = Power+   Boss mỗi 5 level", W / 2, boxY + 115);
-      ctx.fillText("Combo kills → Score multiplier!   Vũ khí auto-upgrade!", W / 2, boxY + 135);
+      ctx.fillText("☕ Coffee = Speed   { } Refactor = Power   🐳 Docker = Drone", W / 2, boxY + 115);
+      ctx.fillText("Combo kills → Score x5!   Boss mỗi 5 level   Auto weapon upgrade!", W / 2, boxY + 135);
 
       // Enter prompt (pulsing)
       const enterAlpha = 0.5 + Math.sin(frame * 0.06) * 0.4;

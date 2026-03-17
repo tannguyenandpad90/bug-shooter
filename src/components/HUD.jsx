@@ -1,6 +1,6 @@
 import styles from "./HUD.module.css";
 
-export default function HUD({ hp, maxHp, score, level, speedActive, refactorActive, combo, weaponTier, dashReady }) {
+export default function HUD({ hp, maxHp, score, level, speedActive, refactorActive, combo, weaponTier, dashReady, droneCount = 0 }) {
   const hpPercent = (hp / maxHp) * 100;
   const hpColor = hpPercent > 60 ? "#00ff88" : hpPercent > 30 ? "#f59e0b" : "#ff0040";
   const tierLabels = ["▪ SINGLE", "▪▪ DOUBLE", "▪▪▪ TRIPLE"];
@@ -51,6 +51,11 @@ export default function HUD({ hp, maxHp, score, level, speedActive, refactorActi
           {refactorActive && (
             <div className={`${styles.buff} ${styles.buffRefactor}`}>
               ◆ POWER
+            </div>
+          )}
+          {droneCount > 0 && (
+            <div className={`${styles.buff} ${styles.buffDocker}`}>
+              🐳 x{droneCount}
             </div>
           )}
         </div>
